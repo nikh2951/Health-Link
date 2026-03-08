@@ -42,6 +42,7 @@ export interface WellnessData {
 
 export interface PatientDetails {
   fullName: string;
+  phoneNumber?: string;
   dateOfBirth: string;
   age: string;
   bloodGroup: string;
@@ -62,6 +63,7 @@ export interface PatientDetails {
 export interface DoctorDetails {
   email?: string;
   fullName: string;
+  phoneNumber?: string;
   age: string;
   specialization: string;
   area: string;

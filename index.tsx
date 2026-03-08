@@ -1,4 +1,3 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -7,6 +6,13 @@ const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
+
+// Ensure local storage is cleared from old mock records when moving to prod DB
+Object.keys(localStorage).forEach(key => {
+  if (key.startsWith('healthlink_data_') || key.startsWith('healthlink_notifications_')) {
+    localStorage.removeItem(key);
+  }
+});
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

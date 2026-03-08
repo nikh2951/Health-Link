@@ -18,6 +18,7 @@ const AVAILABLE_TIME_SLOTS = [
 ];
 
 const MAX_APPOINTMENTS_PER_SLOT = 5;
+const API_BASE = typeof window !== 'undefined' ? `http://${window.location.hostname}:5000` : 'http://localhost:5000';
 
 // --- GLOBAL STORAGE HELPERS ---
 const getGlobalDoctors = (): DoctorDetails[] => {
@@ -893,45 +894,73 @@ const WelcomeView = ({ onSelectRole }: { onSelectRole: (role: 'patient' | 'docto
   </div>
 );
 
-const LoginView = ({ role, onLoginSuccess, onBack, backText = "← Back to Portal Selection" }: { role: 'patient' | 'doctor', onLoginSuccess: (email: string, password?: string) => void, onBack: () => void, backText?: string }) => {
+const LoginView = ({ role, onLoginSuccess, onBack, backText = "← Back to Portal Selection" }: { role: 'patient' | 'doctor', onLoginSuccess: (email: string, password?: string, userData?: any) => void, onBack: () => void, backText?: string }) => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState<1 | 2>(1);
   const [error, setError] = useState('');
-  const [showGoogleAuth, setShowGoogleAuth] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const mockGoogleAccounts = Object.keys(localStorage)
-    .filter(k => k.startsWith(`healthlink_data_${role}_`))
-    .map(k => k.replace(`healthlink_data_${role}_`, ''));
-
-  if (mockGoogleAccounts.length === 0) {
-    mockGoogleAccounts.push(role === 'patient' ? 'new.patient@gmail.com' : 'new.doctor@gmail.com');
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValidGmail(email)) {
-      setError('Enter a correct email id (must end with @gmail.com)');
+      setError('Please enter a valid email address.');
       return;
     }
-    if (password.length !== 6) {
-      setError('Enter 6-digit PIN');
-      return;
-    }
+    setError('');
+    setIsLoading(true);
 
-    const savedData = localStorage.getItem(`healthlink_data_${role}_${email.toLowerCase().trim()}`);
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        if (parsed.password && parsed.password !== password) {
-          setError('Incorrect PIN. Please try again.');
-          return;
-        }
-      } catch (err) {
-        // Proceed if parse error
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.toLowerCase().trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to send OTP.');
+      } else {
+        setStep(2);
       }
+    } catch (err) {
+      setError('Server connection error. Is the backend running?');
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    onLoginSuccess(email, password);
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (otp.length !== 6) {
+      setError('Enter the 6-digit code sent to your email.');
+      return;
+    }
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.toLowerCase().trim(), otp, role })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Invalid OTP.');
+        setIsLoading(false);
+        return;
+      }
+
+      // OTP verified successfully
+      if (data.exists) {
+        onLoginSuccess(email, otp, data.user); // Login
+      } else {
+        onLoginSuccess(email, otp, null); // Setup / Onboard
+      }
+    } catch (err) {
+      setError('Server connection error.');
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -941,71 +970,48 @@ const LoginView = ({ role, onLoginSuccess, onBack, backText = "← Back to Porta
         {backText}
       </button>
       <div className="w-full max-w-md p-8 relative animate-in fade-in zoom-in duration-500">
-        <div className="bg-white p-10 rounded-[40px] shadow-2xl border border-slate-100 text-center">
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl ${role === 'doctor' ? 'bg-blue-600' : 'bg-[#004D40]'}`}>
+        <div className="bg-white p-10 rounded-[40px] shadow-2xl border border-slate-100 text-center relative overflow-hidden">
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl transition-colors ${role === 'doctor' ? 'bg-blue-600' : 'bg-[#004D40]'}`}>
             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-2">Health Link</h2>
           <p className="text-slate-500 font-medium mb-8 capitalize">{role} Login</p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              required
-              type="email"
-              placeholder="Email Address (@gmail.com)"
-              value={email}
-              onChange={e => { setEmail(e.target.value); setError(''); }}
-              className={`w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 ${error && !isValidGmail(email) ? 'focus:ring-red-500' : 'focus:ring-[#004D40]'}`}
-            />
-            <input
-              required
-              type="password"
-              placeholder="6-digit PIN"
-              maxLength={6}
-              value={password}
-              onChange={e => { setPassword(e.target.value); setError(''); }}
-              className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]"
-            />
-            {error && <p className="text-red-500 text-xs font-bold animate-pulse">{error}</p>}
-            <button type="submit" className={`w-full text-white font-bold py-4 rounded-2xl shadow-xl transition-all ${role === 'doctor' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-[#004D40] hover:bg-[#00382D]'}`}>Sign In</button>
 
-            <div className="relative flex items-center py-5">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 text-xs font-bold uppercase tracking-widest">or</span>
-              <div className="flex-grow border-t border-slate-200"></div>
-            </div>
-
-            <button type="button" onClick={() => setShowGoogleAuth(true)} className="w-full bg-white text-slate-700 font-bold py-4 rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all flex items-center justify-center gap-3">
-              <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg>
-              Continue with Google
-            </button>
-          </form>
-
-          {showGoogleAuth && (
-            <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm rounded-[40px] flex items-center justify-center p-8 animate-in zoom-in duration-300">
-              <div className="w-full text-center space-y-4">
-                <h3 className="text-xl font-black text-slate-900 mb-6">Select Google Account</h3>
-                <div className="space-y-3 max-h-60 overflow-y-auto w-full px-2">
-                  {mockGoogleAccounts.map(acc => (
-                    <button key={acc} type="button" onClick={() => onLoginSuccess(acc)} className="w-full p-4 rounded-2xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-left flex items-center gap-4 transition-all group">
-                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold group-hover:bg-blue-600 group-hover:text-white transition-colors">{acc[0].toUpperCase()}</div>
-                      <div className="flex-1 truncate">
-                        <p className="font-black text-slate-900 text-sm truncate">{acc}</p>
-                        <p className="text-xs text-slate-500">Google Account</p>
-                      </div>
-                    </button>
-                  ))}
-                  <button type="button" onClick={() => {
-                    const newAcc = window.prompt("Enter your Google Account (@gmail.com):");
-                    if (newAcc && newAcc.endsWith("@gmail.com")) onLoginSuccess(newAcc);
-                    else if (newAcc) alert("Please use a @gmail.com account.");
-                  }} className="w-full p-4 rounded-2xl border-2 border-dashed border-slate-300 hover:border-slate-400 text-slate-500 hover:text-slate-700 font-bold text-sm transition-colors text-center">
-                    + Use another account
-                  </button>
-                </div>
-                <button type="button" onClick={() => setShowGoogleAuth(false)} className="mt-6 text-slate-400 text-sm font-bold hover:text-slate-900">Cancel</button>
-              </div>
-            </div>
+          {step === 1 ? (
+            <form onSubmit={handleSendOTP} className="space-y-4 animate-in slide-in-from-left duration-300">
+              <input
+                required
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={e => { setEmail(e.target.value); setError(''); }}
+                className={`w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 ${error ? 'focus:ring-red-500' : 'focus:ring-[#004D40]'}`}
+              />
+              {error && <p className="text-red-500 text-xs font-bold animate-pulse">{error}</p>}
+              <button disabled={isLoading} type="submit" className={`w-full text-white font-bold py-4 rounded-2xl shadow-xl transition-all disabled:opacity-70 ${role === 'doctor' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-[#004D40] hover:bg-[#00382D]'}`}>
+                {isLoading ? 'Sending Code...' : 'Send Login Code'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOTP} className="space-y-4 animate-in slide-in-from-right duration-300">
+              <p className="text-sm text-slate-600 mb-2">We sent a 6-digit code to <b>{email}</b></p>
+              <input
+                required
+                type="text"
+                placeholder="Enter 6-digit Code"
+                maxLength={6}
+                value={otp}
+                onChange={e => { setOtp(e.target.value.replace(/\D/g, '')); setError(''); }}
+                className={`w-full bg-slate-50 border-none text-center tracking-[0.5em] font-black text-xl rounded-2xl py-4 px-6 outline-none focus:ring-2 ${error ? 'focus:ring-red-500' : 'focus:ring-[#004D40]'}`}
+              />
+              {error && <p className="text-red-500 text-xs font-bold animate-pulse">{error}</p>}
+              <button disabled={isLoading} type="submit" className={`w-full text-white font-bold py-4 rounded-2xl shadow-xl transition-all disabled:opacity-70 ${role === 'doctor' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-[#004D40] hover:bg-[#00382D]'}`}>
+                {isLoading ? 'Verifying...' : 'Verify & Login'}
+              </button>
+              <button type="button" onClick={() => setStep(1)} className="text-sm text-slate-500 hover:text-slate-800 mt-4 block w-full">Use a different email</button>
+            </form>
           )}
+
         </div>
       </div>
     </div>
@@ -1014,16 +1020,31 @@ const LoginView = ({ role, onLoginSuccess, onBack, backText = "← Back to Porta
 
 const OnboardingView = ({ role, email, onComplete, onBack }: { role: 'patient' | 'doctor', email: string, onComplete: (details: any) => void, onBack: () => void }) => {
   const [patientData, setPatientData] = useState<PatientDetails>({
-    fullName: '', dateOfBirth: '', age: '', bloodGroup: '', height: '', weight: '', lastBloodTest: '',
+    fullName: '', phoneNumber: '', dateOfBirth: '', age: '', bloodGroup: '', height: '', weight: '', lastBloodTest: '',
     hasBloodPressure: false, hasBloodSugar: false, hasThyroid: false,
     recentSurgeries: '', previousFractures: '', previousDoctor: '', latestMedicines: [''], profilePicture: null,
     gender: ''
   });
 
   const [doctorData, setDoctorData] = useState<DoctorDetails>({
-    fullName: '', age: '', specialization: '', area: '', hospitalName: '', experienceYears: '', licenseNumber: '', consultationFee: '', profilePicture: null, email: email,
+    fullName: '', phoneNumber: '', age: '', specialization: '', area: '', hospitalName: '', experienceYears: '', licenseNumber: '', consultationFee: '', profilePicture: null, email: email,
     availability: {}
   });
+
+  const [nameConflictError, setNameConflictError] = useState('');
+
+  const handleNameBlur = async (name: string) => {
+    if (!name.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/users/check-name?name=${encodeURIComponent(name.trim())}&role=${role}`);
+      const data = await res.json();
+      if (data.exists) {
+        setNameConflictError('A user with this name already exists. Please include your surname as well.');
+      } else {
+        setNameConflictError('');
+      }
+    } catch (e) { }
+  };
 
   const areas = MEDICAL_DATA.areas.map(a => a.name);
   const specializations = ['Cardiology', 'Neurology', 'Oncology', 'Pediatrics', 'Orthopedics', 'General Physician', 'Dermatology'];
@@ -1040,6 +1061,17 @@ const OnboardingView = ({ role, email, onComplete, onBack }: { role: 'patient' |
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const currentPhone = role === 'patient' ? patientData.phoneNumber : doctorData.phoneNumber;
+
+    if (nameConflictError) {
+      alert("Please resolve the name conflict by including your surname.");
+      return;
+    }
+    if (!currentPhone || currentPhone.length !== 10) {
+      alert("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
     if (role === 'patient') {
       if (!patientData.gender) {
         alert('Please select your gender to complete your profile.');
@@ -1068,10 +1100,18 @@ const OnboardingView = ({ role, email, onComplete, onBack }: { role: 'patient' |
           {role === 'patient' ? (
             <>
               <div className="space-y-6">
-                <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">1. Full Name</label><input required placeholder="Enter name" value={patientData.fullName} onChange={e => setPatientData({ ...patientData, fullName: e.target.value })} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none" /></div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">1. Full Name</label>
+                  <input required placeholder="Enter name" onBlur={() => handleNameBlur(patientData.fullName)} value={patientData.fullName} onChange={e => { setPatientData({ ...patientData, fullName: e.target.value }); setNameConflictError(''); }} className={`w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none ${nameConflictError ? 'ring-2 ring-red-500' : ''}`} />
+                  {nameConflictError && <p className="text-red-500 text-xs font-bold mt-1 ml-1 animate-pulse">{nameConflictError}</p>}
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">2. Phone Number</label>
+                  <input required placeholder="10-digit Phone" maxLength={10} value={patientData.phoneNumber} onChange={e => setPatientData({ ...patientData, phoneNumber: e.target.value.replace(/\D/g, '') })} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none" />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">2. DOB</label><input required type="date" value={patientData.dateOfBirth} onChange={e => handleDobChange(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none" /></div>
-                  <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">3. Age (Auto)</label><input readOnly placeholder="Age" value={patientData.age} className="w-full bg-slate-100 border-none rounded-2xl py-3 px-4 outline-none text-slate-400 cursor-not-allowed" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">3. DOB</label><input required type="date" value={patientData.dateOfBirth} onChange={e => handleDobChange(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">4. Age (Auto)</label><input readOnly placeholder="Age" value={patientData.age} className="w-full bg-slate-100 border-none rounded-2xl py-3 px-4 outline-none text-slate-400 cursor-not-allowed" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1139,7 +1179,15 @@ const OnboardingView = ({ role, email, onComplete, onBack }: { role: 'patient' |
           ) : (
             <>
               <div className="space-y-6">
-                <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Full Name</label><input required placeholder="Dr. Enter name" value={doctorData.fullName} onChange={e => setDoctorData({ ...doctorData, fullName: e.target.value })} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none" /></div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Full Name</label>
+                  <input required placeholder="Enter name (Dr. will be prepended automatically)" onBlur={() => handleNameBlur(doctorData.fullName)} value={doctorData.fullName} onChange={e => { setDoctorData({ ...doctorData, fullName: e.target.value }); setNameConflictError(''); }} className={`w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none ${nameConflictError ? 'ring-2 ring-red-500' : ''}`} />
+                  {nameConflictError && <p className="text-red-500 text-xs font-bold mt-1 ml-1 animate-pulse">{nameConflictError}</p>}
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Phone Number</label>
+                  <input required placeholder="10-digit Phone" maxLength={10} value={doctorData.phoneNumber} onChange={e => setDoctorData({ ...doctorData, phoneNumber: e.target.value.replace(/\D/g, '') })} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none" />
+                </div>
                 <div><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Specialization</label>
                   <select required value={doctorData.specialization} onChange={e => setDoctorData({ ...doctorData, specialization: e.target.value })} className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 outline-none">
                     <option value="">Select Specialty</option>
@@ -1185,7 +1233,7 @@ const DashboardView = ({ details, appointments, onOpenBooking, email }: { detail
   }, []);
 
   const getSafeQRUrl = () => {
-    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.31.31:${window.location.port}?mobileLogin=${encodeURIComponent(email)}&role=patient` : '';
+    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.0.211:${window.location.port}?mobileLogin=${encodeURIComponent(email)}&role=patient` : '';
     try {
       const qrApptsString = JSON.stringify(appointments.slice(0, 5));
       const exportDetails = { ...details, profilePicture: null };
@@ -1311,7 +1359,7 @@ const DoctorDashboard = ({ details, appointments, onSaveAvailability, email }: {
 
   const myQueue = appointments.filter(a => a.doctorEmail === details.email);
   const getSafeQRUrl = () => {
-    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.31.31:${window.location.port}?mobileLogin=${encodeURIComponent(email)}&role=doctor` : '';
+    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.0.211:${window.location.port}?mobileLogin=${encodeURIComponent(email)}&role=doctor` : '';
     try {
       const qrApptsString = JSON.stringify(myQueue.slice(0, 5));
       const exportDetails = { ...details, profilePicture: null };
@@ -1513,6 +1561,8 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [showPayment, setShowPayment] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1522,7 +1572,21 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
 
   const appointments = useMemo(() => getGlobalAppointments(), [isOpen]);
 
-  const registeredDoctors = getGlobalDoctors();
+  const [registeredDoctors, setRegisteredDoctors] = useState<{ name: string, email?: string, specialization?: string, fee?: string, hospitalName?: string, area?: string, availability?: any }[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`${API_BASE}/api/doctors`)
+      .then(res => res.json())
+      .then(data => {
+        const remote = data.map((d: any) => ({ ...d, name: `Dr. ${d.fullName}`, fee: d.consultationFee }));
+        const local = getGlobalDoctors();
+        const merged = [...local];
+        remote.forEach((r: any) => { if (!merged.find(m => m.email === r.email)) merged.push(r); });
+        setRegisteredDoctors(merged);
+      })
+      .catch(() => setRegisteredDoctors(getGlobalDoctors()));
+  }, [isOpen]);
   const specializations = ['Cardiology', 'Neurology', 'Oncology', 'Pediatrics', 'Orthopedics', 'General Physician', 'Dermatology'];
 
   const doctorsList = useMemo<{ name: string, email?: string, specialization?: string, fee?: string }[]>(() => {
@@ -1562,99 +1626,151 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white w-full max-w-xl rounded-[40px] p-10 shadow-2xl relative animate-in zoom-in duration-300">
         <button onClick={onClose} className="absolute top-8 right-8 text-slate-400 hover:text-slate-900 transition-colors">✕</button>
-        <h2 className="text-3xl font-black text-slate-900 mb-8">Book Appointment</h2>
-        <div className="space-y-6">
-          <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]">
-            <option value="">Select Area</option>
-            {MEDICAL_DATA.areas.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-          </select>
-          <select disabled={!selectedArea} value={selectedHospital} onChange={e => setSelectedHospital(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
-            <option value="">Select Hospital</option>
-            {MEDICAL_DATA.areas.find(a => a.name === selectedArea)?.hospitals.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
-          </select>
-          <select disabled={!selectedHospital} value={selectedSpecialization} onChange={e => { setSelectedSpecialization(e.target.value); setSelectedDoctor(null); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
-            <option value="">Select Specialization</option>
-            {specializations.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select disabled={!selectedSpecialization} value={selectedDoctor?.name || ''} onChange={e => {
-            const doc = doctorsList.find(d => d.name === e.target.value);
-            if (doc) setSelectedDoctor(doc);
-          }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
-            <option value="">Select Doctor</option>
-            {doctorsList.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
-          </select>
 
-          {selectedDoctor && (
-            <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected Expert</p>
-                <p className="text-sm font-black text-[#004D40]">{selectedDoctor.name}</p>
-                <p className="text-[9px] font-bold text-slate-500 uppercase">{selectedDoctor.specialization}</p>
+        {showPayment ? (
+          <div>
+            <button onClick={() => setShowPayment(false)} className="text-slate-400 hover:text-slate-900 font-bold text-sm mb-6 flex items-center gap-2">← Back to Details</button>
+            <h2 className="text-3xl font-black text-slate-900 mb-2">Complete Payment</h2>
+            <p className="text-slate-500 font-medium mb-8">Securely pay the consultation fee to confirm.</p>
+
+            <div className="bg-slate-50 rounded-3xl p-6 mb-8 border border-slate-100">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Consultation with</span>
+                <span className="font-black text-slate-900">{selectedDoctor?.name}</span>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Consultation Fee</p>
-                <p className="text-lg font-black text-emerald-600">₹{selectedDoctor.fee}</p>
+              <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
+                <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Date & Time</span>
+                <span className="font-black text-slate-900 text-right">{selectedDate}<br />{selectedTime}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-900 font-black uppercase tracking-widest text-sm">Amount to Pay</span>
+                <span className="text-3xl font-black text-emerald-600">₹{selectedDoctor?.fee}</span>
               </div>
             </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="date"
-              min={new Date().toISOString().split('T')[0]}
-              value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
-              className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]"
-            />
-            <select disabled={!selectedDate || !selectedDoctor} value={selectedTime} onChange={e => setSelectedTime(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50">
-              <option value="">Select Time Slot</option>
-              {availableSlotsForDoctorAndDate.map(t => {
-                const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === t).length;
-                const isFull = bookedCount >= MAX_APPOINTMENTS_PER_SLOT;
-                return (
-                  <option key={t} value={t} disabled={isFull}>
-                    {t} {isFull ? '(FULL)' : `(${MAX_APPOINTMENTS_PER_SLOT - bookedCount} left)`}
-                  </option>
-                );
-              })}
-              {selectedDate && selectedDoctor && availableSlotsForDoctorAndDate.length === 0 && <option disabled>No slots for this date</option>}
-            </select>
+            <div className="space-y-4 mb-8">
+              <label className="flex items-center justify-between p-4 rounded-2xl border-2 border-[#004D40] bg-emerald-50/30 cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-full bg-[#004D40] ring-4 ring-emerald-100 flex-shrink-0"></div>
+                  <span className="font-bold text-slate-900">UPI / QR Code</span>
+                </div>
+                <span className="text-xs bg-emerald-100 text-[#004D40] font-bold px-2 py-1 rounded-md">Fastest</span>
+              </label>
+              <label className="flex items-center justify-between p-4 rounded-2xl border-2 border-slate-100 opacity-50 cursor-not-allowed">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
+                  <span className="font-bold text-slate-400">Credit / Debit Card</span>
+                </div>
+              </label>
+            </div>
+
+            <button disabled={isProcessing} onClick={() => {
+              setIsProcessing(true);
+              setTimeout(() => {
+                onBook({
+                  id: Math.random().toString(),
+                  bookingId: 'HL-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+                  date: selectedDate,
+                  time: selectedTime,
+                  area: selectedArea,
+                  hospital: selectedHospital,
+                  doctor: selectedDoctor!.name,
+                  doctorEmail: selectedDoctor!.email,
+                  patientEmail,
+                  patientName,
+                  paymentStatus: 'Paid'
+                });
+                setIsProcessing(false);
+                alert('Payment Successful! Your appointment is confirmed.');
+                onClose();
+              }, 1500);
+            }} className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-[1.02] transition-all flex justify-center items-center gap-2">
+              {isProcessing ? 'Processing Payment...' : `Pay ₹${selectedDoctor?.fee} & Confirm`}
+            </button>
           </div>
-          <button onClick={() => {
-            if (!selectedDoctor || !selectedDate || !selectedTime) return alert('Fill all fields');
+        ) : (
+          <>
+            <h2 className="text-3xl font-black text-slate-900 mb-8">Book Appointment</h2>
+            <div className="space-y-6">
+              <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]">
+                <option value="">Select Area</option>
+                {MEDICAL_DATA.areas.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+              </select>
+              <select disabled={!selectedArea} value={selectedHospital} onChange={e => setSelectedHospital(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
+                <option value="">Select Hospital</option>
+                {MEDICAL_DATA.areas.find(a => a.name === selectedArea)?.hospitals.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
+              </select>
+              <select disabled={!selectedHospital} value={selectedSpecialization} onChange={e => { setSelectedSpecialization(e.target.value); setSelectedDoctor(null); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
+                <option value="">Select Specialization</option>
+                {specializations.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select disabled={!selectedSpecialization} value={selectedDoctor?.name || ''} onChange={e => {
+                const doc = doctorsList.find(d => d.name === e.target.value);
+                if (doc) setSelectedDoctor(doc);
+              }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
+                <option value="">Select Doctor</option>
+                {doctorsList.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+              </select>
 
-            const now = new Date();
-            const today = [
-              now.getFullYear(),
-              String(now.getMonth() + 1).padStart(2, '0'),
-              String(now.getDate()).padStart(2, '0')
-            ].join('-');
+              {selectedDoctor && (
+                <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected Expert</p>
+                    <p className="text-sm font-black text-[#004D40]">{selectedDoctor.name}</p>
+                    <p className="text-[9px] font-bold text-slate-500 uppercase">{selectedDoctor.specialization}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Consultation Fee</p>
+                    <p className="text-lg font-black text-emerald-600">₹{selectedDoctor.fee}</p>
+                  </div>
+                </div>
+              )}
 
-            if (selectedDate < today) return alert('You cannot book an appointment for a past date.');
-            if (selectedDate === today && isTimePassed(selectedTime, selectedDate)) {
-              return alert('This time slot has already passed. Please select a future time.');
-            }
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]"
+                />
+                <select disabled={!selectedDate || !selectedDoctor} value={selectedTime} onChange={e => setSelectedTime(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50">
+                  <option value="">Select Time Slot</option>
+                  {availableSlotsForDoctorAndDate.map(t => {
+                    const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === t).length;
+                    const isFull = bookedCount >= MAX_APPOINTMENTS_PER_SLOT;
+                    return (
+                      <option key={t} value={t} disabled={isFull}>
+                        {t} {isFull ? '(FULL)' : `(${MAX_APPOINTMENTS_PER_SLOT - bookedCount} left)`}
+                      </option>
+                    );
+                  })}
+                  {selectedDate && selectedDoctor && availableSlotsForDoctorAndDate.length === 0 && <option disabled>No slots for this date</option>}
+                </select>
+              </div>
+              <button onClick={() => {
+                if (!selectedDoctor || !selectedDate || !selectedTime) return alert('Fill all fields');
 
-            const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === selectedTime).length;
-            if (bookedCount >= MAX_APPOINTMENTS_PER_SLOT) return alert('This slot is now full. Please select another time.');
+                const now = new Date();
+                const today = [
+                  now.getFullYear(),
+                  String(now.getMonth() + 1).padStart(2, '0'),
+                  String(now.getDate()).padStart(2, '0')
+                ].join('-');
 
-            onBook({
-              id: Math.random().toString(),
-              bookingId: 'HL-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-              date: selectedDate,
-              time: selectedTime,
-              area: selectedArea,
-              hospital: selectedHospital,
-              doctor: selectedDoctor.name,
-              doctorEmail: selectedDoctor.email,
-              patientEmail,
-              patientName,
-              paymentStatus: 'Paid'
-            });
-            alert('Your appointment is successful!');
-            onClose();
-          }} className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-105 transition-all">Confirm Appointment</button>
-        </div>
+                if (selectedDate < today) return alert('You cannot book an appointment for a past date.');
+                if (selectedDate === today && isTimePassed(selectedTime, selectedDate)) {
+                  return alert('This time slot has already passed. Please select a future time.');
+                }
+
+                const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === selectedTime).length;
+                if (bookedCount >= MAX_APPOINTMENTS_PER_SLOT) return alert('This slot is now full. Please select another time.');
+
+                setShowPayment(true);
+              }} className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-[0_8px_30px_rgb(0,77,64,0.3)] hover:scale-105 transition-all text-lg tracking-wide uppercase">Proceed to Payment</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1728,60 +1844,93 @@ const App = () => {
     }
   }, [view, showBooking]);
 
-  const handleLoginSuccess = (email: string, password?: string) => {
+  const fetchAppointments = async (email: string, userRole: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/appointments?role=${userRole}&email=${email}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setAppointments(data);
+    } catch (e) { }
+  };
+
+  const handleLoginSuccess = async (email: string, password?: string, userData?: any) => {
     const normalizedEmail = email.toLowerCase().trim();
     setUserEmail(normalizedEmail);
     if (password) setUserPassword(password);
 
-    const key = `healthlink_data_${role}_${normalizedEmail}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      const data = JSON.parse(saved);
-      if (role === 'patient') setPatientDetails(data.details); else setDoctorDetails(data.details);
+    if (userData) {
+      if (role === 'patient') setPatientDetails(userData);
+      else setDoctorDetails(userData);
       setView('home');
+      fetchAppointments(normalizedEmail, role);
     } else {
+      if (!password) {
+        try {
+          const res = await fetch(`${API_BASE}/api/users/${normalizedEmail}?role=${role}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (role === 'patient') setPatientDetails(data); else setDoctorDetails(data);
+            setView('home');
+            fetchAppointments(normalizedEmail, role);
+            return;
+          }
+        } catch (e) { }
+      }
       setView('onboarding');
     }
   };
 
-  const handleOnboardingComplete = (details: any) => {
+  const handleOnboardingComplete = async (details: any) => {
     const normalizedEmail = userEmail.toLowerCase().trim();
-    if (role === 'patient') {
-      setPatientDetails(details);
-    } else {
-      setDoctorDetails(details);
-      saveGlobalDoctor({ ...details, email: normalizedEmail });
+    const payload = { ...details, email: normalizedEmail, pin: userPassword || '000000', role };
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        alert(d.error || 'Registration failed');
+        return;
+      }
+      if (role === 'patient') setPatientDetails(payload);
+      else setDoctorDetails(payload);
+      setView('home');
+      fetchAppointments(normalizedEmail, role);
+    } catch (e) {
+      alert("Registration failed");
     }
-    localStorage.setItem(`healthlink_data_${role}_${normalizedEmail}`, JSON.stringify({ details, password: userPassword }));
-    setView('home');
   };
 
-  const handleUpdateDetails = (newDetails: any) => {
+  const handleUpdateDetails = async (newDetails: any) => {
     const normalizedEmail = userEmail.toLowerCase().trim();
-
-    // Preserve the password field so it doesn't get wiped out during profile updates
-    const existingDataStr = localStorage.getItem(`healthlink_data_${role}_${normalizedEmail}`);
-    let existingPassword = null;
-    if (existingDataStr) {
-      try { existingPassword = JSON.parse(existingDataStr).password; } catch (e) { }
+    try {
+      const res = await fetch(`${API_BASE}/api/users/${normalizedEmail}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDetails)
+      });
+      if (res.ok) {
+        if (role === 'patient') setPatientDetails(newDetails);
+        else setDoctorDetails(newDetails);
+      } else alert("Failed to update profile to database");
+    } catch (e) {
+      alert("Server error during update");
     }
-
-    if (role === 'patient') {
-      setPatientDetails(newDetails);
-    } else {
-      setDoctorDetails(newDetails);
-      saveGlobalDoctor({ ...newDetails, email: normalizedEmail });
-    }
-
-    localStorage.setItem(`healthlink_data_${role}_${normalizedEmail}`, JSON.stringify({
-      details: newDetails,
-      password: existingPassword
-    }));
   };
 
-  const handleBooking = (a: BookedAppointment) => {
+  const handleBooking = async (a: BookedAppointment) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/appointments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(a)
+      });
+      if (res.ok) setAppointments(prev => [...prev, a]);
+      else return alert("Failed to book appointment");
+    } catch (e) { return alert("Server error"); }
+
     saveGlobalAppointment(a);
-    setAppointments(prev => [...prev, a]);
 
     // Create notifications
     const now = new Date().toLocaleString();
