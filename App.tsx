@@ -1233,7 +1233,7 @@ const DashboardView = ({ details, appointments, onOpenBooking, email }: { detail
   }, []);
 
   const getSafeQRUrl = () => {
-    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.0.211:${window.location.port}?mobileLogin=${encodeURIComponent(email)}&role=patient` : '';
+    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.0.211:3000?mobileLogin=${encodeURIComponent(email)}&role=patient` : '';
     try {
       const qrApptsString = JSON.stringify(appointments.slice(0, 5));
       const exportDetails = { ...details, profilePicture: null };
@@ -1359,7 +1359,7 @@ const DoctorDashboard = ({ details, appointments, onSaveAvailability, email }: {
 
   const myQueue = appointments.filter(a => a.doctorEmail === details.email);
   const getSafeQRUrl = () => {
-    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.0.211:${window.location.port}?mobileLogin=${encodeURIComponent(email)}&role=doctor` : '';
+    const base = typeof window !== 'undefined' ? `${window.location.protocol}//192.168.0.211:3000?mobileLogin=${encodeURIComponent(email)}&role=doctor` : '';
     try {
       const qrApptsString = JSON.stringify(myQueue.slice(0, 5));
       const exportDetails = { ...details, profilePicture: null };
