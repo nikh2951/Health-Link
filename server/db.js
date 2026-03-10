@@ -54,10 +54,15 @@ const db = new sqlite3.Database(dbPath, (err) => {
       date TEXT NOT NULL,
       time TEXT NOT NULL,
       status TEXT DEFAULT 'Scheduled',
+      amountPaid TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (patientEmail) REFERENCES users (email),
       FOREIGN KEY (doctorEmail) REFERENCES users (email)
     )`);
+
+    db.run("ALTER TABLE appointments ADD COLUMN amountPaid TEXT", (err) => {
+      // ignore error if column already exists
+    });
 
     // Create Prescriptions / Medicines Table
     db.run(`CREATE TABLE IF NOT EXISTS prescriptions (
@@ -66,6 +71,22 @@ const db = new sqlite3.Database(dbPath, (err) => {
       medicineName TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (patientEmail) REFERENCES users (email)
+    )`);
+
+    // Create Emergencies Table
+    db.run(`CREATE TABLE IF NOT EXISTS emergencies (
+      id TEXT PRIMARY KEY,
+      patientEmail TEXT NOT NULL,
+      patientName TEXT NOT NULL,
+      doctorEmail TEXT NOT NULL,
+      doctorName TEXT NOT NULL,
+      problemDescription TEXT NOT NULL,
+      prescription TEXT,
+      status TEXT DEFAULT 'Pending',
+      isFeePaid BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(patientEmail) REFERENCES users(email),
+      FOREIGN KEY(doctorEmail) REFERENCES users(email)
     )`);
   }
 });

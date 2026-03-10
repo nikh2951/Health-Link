@@ -1498,7 +1498,8 @@ const DoctorDashboard = ({ details, appointments, onSaveAvailability, email }: {
               <thead className="bg-slate-50/50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 <tr>
                   <th className="px-8 py-4">Patient</th>
-                  <th className="px-8 py-4">Schedule</th>
+                  <th className="px-8 py-4">Slot</th>
+                  <th className="px-8 py-4">Amount Paid</th>
                   <th className="px-8 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1507,10 +1508,11 @@ const DoctorDashboard = ({ details, appointments, onSaveAvailability, email }: {
                   <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-8 py-6"><span className="font-bold text-slate-900">{appt.patientName}</span></td>
                     <td className="px-8 py-6 font-bold text-slate-600 text-[10px]">{appt.date} • {appt.time}</td>
+                    <td className="px-8 py-6"><span className="font-black text-emerald-600">₹{appt.amountPaid || '0'}</span></td>
                     <td className="px-8 py-6 text-right"><button onClick={() => setViewingPatient(appt.patientEmail)} className="text-blue-600 text-[10px] font-bold hover:underline">Medical Record</button></td>
                   </tr>
                 ))}
-                {myQueue.length === 0 && <tr><td colSpan={3} className="px-8 py-20 text-center text-slate-400 italic">Queue is empty.</td></tr>}
+                {myQueue.length === 0 && <tr><td colSpan={4} className="px-8 py-20 text-center text-slate-400 italic">Queue is empty.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1562,7 +1564,23 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
   const [selectedTime, setSelectedTime] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [showPayment, setShowPayment] = useState(false);
+  const [showQRScan, setShowQRScan] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [extraFee, setExtraFee] = useState(0);
+  const [manualAmount, setManualAmount] = useState('');
+
+  useEffect(() => {
+    if (selectedDoctor && selectedDoctor.email) {
+      fetch(`${API_BASE}/api/emergencies/unpaid/${selectedDoctor.email}/${patientEmail}`)
+        .then(res => res.json())
+        .then(data => {
+          setExtraFee(data.count > 0 ? 200 : 0);
+        })
+        .catch(() => setExtraFee(0));
+    } else {
+      setExtraFee(0);
+    }
+  }, [selectedDoctor, patientEmail]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1642,51 +1660,81 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
                 <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Date & Time</span>
                 <span className="font-black text-slate-900 text-right">{selectedDate}<br />{selectedTime}</span>
               </div>
+              {extraFee > 0 && (
+                <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200 bg-red-50/50 -mx-6 px-6 py-2">
+                  <span className="text-red-500 font-bold uppercase tracking-widest text-xs flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg> Emergency Service Fee</span>
+                  <span className="font-black text-red-600">₹{extraFee}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-900 font-black uppercase tracking-widest text-sm">Amount to Pay</span>
-                <span className="text-3xl font-black text-emerald-600">₹{selectedDoctor?.fee}</span>
+                <span className="text-3xl font-black text-emerald-600">₹{Number(selectedDoctor?.fee || 0) + extraFee}</span>
               </div>
             </div>
 
             <div className="space-y-4 mb-8">
-              <label className="flex items-center justify-between p-4 rounded-2xl border-2 border-[#004D40] bg-emerald-50/30 cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="w-4 h-4 rounded-full bg-[#004D40] ring-4 ring-emerald-100 flex-shrink-0"></div>
-                  <span className="font-bold text-slate-900">UPI / QR Code</span>
-                </div>
-                <span className="text-xs bg-emerald-100 text-[#004D40] font-bold px-2 py-1 rounded-md">Fastest</span>
-              </label>
-              <label className="flex items-center justify-between p-4 rounded-2xl border-2 border-slate-100 opacity-50 cursor-not-allowed">
-                <div className="flex items-center gap-3">
-                  <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0"></div>
-                  <span className="font-bold text-slate-400">Credit / Debit Card</span>
-                </div>
-              </label>
-            </div>
+              {!showQRScan ? (
+                <button
+                  onClick={() => setShowQRScan(true)}
+                  className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-[1.02] transition-all flex justify-center items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+                  Pay the Fee
+                </button>
+              ) : (
+                <div className="animate-in zoom-in duration-300">
+                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center mb-6">
+                    <QRCode value={`healthlink-pay-${selectedDoctor?.email}-${Number(selectedDoctor?.fee || 0) + extraFee}`} size={160} />
+                    <p className="text-[10px] font-black text-slate-400 mt-4 uppercase tracking-widest">Scan to initiate payment</p>
+                  </div>
 
-            <button disabled={isProcessing} onClick={() => {
-              setIsProcessing(true);
-              setTimeout(() => {
-                onBook({
-                  id: Math.random().toString(),
-                  bookingId: 'HL-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-                  date: selectedDate,
-                  time: selectedTime,
-                  area: selectedArea,
-                  hospital: selectedHospital,
-                  doctor: selectedDoctor!.name,
-                  doctorEmail: selectedDoctor!.email,
-                  patientEmail,
-                  patientName,
-                  paymentStatus: 'Paid'
-                });
-                setIsProcessing(false);
-                alert('Payment Successful! Your appointment is confirmed.');
-                onClose();
-              }, 1500);
-            }} className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-[1.02] transition-all flex justify-center items-center gap-2">
-              {isProcessing ? 'Processing Payment...' : `Pay ₹${selectedDoctor?.fee} & Confirm`}
-            </button>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1 block mb-2">Enter the Amount to Pay</label>
+                      <input
+                        type="number"
+                        placeholder="Enter amount (min ₹100)"
+                        value={manualAmount}
+                        onChange={e => setManualAmount(e.target.value)}
+                        className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40] font-bold text-lg"
+                      />
+                    </div>
+
+                    <button
+                      disabled={isProcessing}
+                      onClick={() => {
+                        const amt = Number(manualAmount);
+                        if (amt < 100) return alert('Amount must be above ₹100');
+
+                        setIsProcessing(true);
+                        setTimeout(() => {
+                          onBook({
+                            id: Math.random().toString(),
+                            bookingId: 'HL-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+                            date: selectedDate,
+                            time: selectedTime,
+                            area: selectedArea,
+                            hospital: selectedHospital,
+                            doctor: selectedDoctor!.name,
+                            doctorEmail: selectedDoctor!.email,
+                            patientEmail,
+                            patientName,
+                            paymentStatus: 'Paid',
+                            amountPaid: manualAmount
+                          });
+                          setIsProcessing(false);
+                          alert('Payment Successful! Your appointment is confirmed.');
+                          onClose();
+                        }, 1500);
+                      }}
+                      className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-[1.02] transition-all flex justify-center items-center gap-2"
+                    >
+                      {isProcessing ? 'Processing Payment...' : 'Complete Payment'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -1720,8 +1768,9 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
                     <p className="text-[9px] font-bold text-slate-500 uppercase">{selectedDoctor.specialization}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Consultation Fee</p>
-                    <p className="text-lg font-black text-emerald-600">₹{selectedDoctor.fee}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fee To Pay</p>
+                    <p className="text-lg font-black text-emerald-600">₹{Number(selectedDoctor.fee || 0) + extraFee}</p>
+                    {extraFee > 0 && <p className="text-[9px] font-bold text-red-500 uppercase tracking-widest animate-pulse mt-1">+₹{extraFee} Emergency</p>}
                   </div>
                 </div>
               )}
@@ -1776,11 +1825,235 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
   );
 };
 
+// --- EMERGENCY VIEWS ---
+
+const EmergencyPatientView = ({ email, patientName }: { email: string, patientName: string }) => {
+  const [doctorsList, setDoctorsList] = useState<{ email: string, name: string, hospital: string, area: string, fee: string, spec: string }[]>([]);
+  const [emergencies, setEmergencies] = useState<any[]>([]);
+  const [selectedArea, setSelectedArea] = useState('');
+  const [selectedHospital, setSelectedHospital] = useState('');
+  const [selectedDoctor, setSelectedDoctor] = useState<any>(null);
+  const [problem, setProblem] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchEmergencies = () => {
+    fetch(`${API_BASE}/api/emergencies?role=patient&email=${email}`)
+      .then(res => res.json())
+      .then(data => Array.isArray(data) && setEmergencies(data))
+      .catch(() => { });
+  };
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/doctors`)
+      .then(res => res.json())
+      .then(data => {
+        const remote = data.map((d: any) => ({ ...d, name: `Dr. ${d.fullName}`, fee: d.consultationFee }));
+        setDoctorsList(remote);
+      }).catch(() => { });
+    fetchEmergencies();
+  }, [email]);
+
+  const handleSubmit = async () => {
+    if (!selectedDoctor || !problem.trim()) return alert("Please select a doctor and describe your problem.");
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/emergencies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientEmail: email,
+          patientName: patientName,
+          doctorEmail: selectedDoctor.email,
+          doctorName: selectedDoctor.name,
+          problemDescription: problem
+        })
+      });
+      if (res.ok) {
+        alert("Emergency request sent successfully!");
+        setProblem('');
+        setSelectedDoctor(null);
+        setSelectedHospital('');
+        setSelectedArea('');
+        fetchEmergencies();
+      } else {
+        alert("Failed to send emergency request.");
+      }
+    } catch (e) {
+      alert("Server error.");
+    }
+    setIsSubmitting(false);
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex items-center gap-4 mb-8">
+        <h2 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+          <span className="w-2 h-8 rounded-full bg-red-500 block"></span>
+          Emergency Assistance
+        </h2>
+      </div>
+
+      <div className="bg-red-50 p-8 rounded-[40px] border border-red-100 shadow-sm">
+        <h3 className="text-xl font-bold text-red-700 mb-6">Request Immediate Help</h3>
+        <p className="text-sm text-red-600 mb-6 font-medium">Select an expert to request immediate temporary relief while you wait for a direct consultation. A premium ₹200 fee applies to your next regular booking with this doctor.</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); setSelectedDoctor(null); }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-red-400">
+            <option value="">Select Area</option>
+            {Array.from(new Set(doctorsList.map(a => a.area))).map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select disabled={!selectedArea} value={selectedHospital} onChange={e => { setSelectedHospital(e.target.value); setSelectedDoctor(null); }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none disabled:opacity-50">
+            <option value="">Select Hospital</option>
+            {Array.from(new Set(doctorsList.filter(d => d.area === selectedArea).map(h => h.hospital))).map(h => <option key={h} value={h}>{h}</option>)}
+          </select>
+          <select disabled={!selectedHospital} value={selectedDoctor?.email || ''} onChange={e => {
+            const doc = doctorsList.find(d => d.email === e.target.value);
+            if (doc) setSelectedDoctor(doc);
+          }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none disabled:opacity-50">
+            <option value="">Select Doctor</option>
+            {doctorsList.filter(d => d.hospital === selectedHospital).map(d => <option key={d.email} value={d.email}>{d.name} ({d.spec})</option>)}
+          </select>
+        </div>
+
+        <textarea
+          placeholder="Describe your emergency problem and symptoms clearly..."
+          value={problem}
+          onChange={e => setProblem(e.target.value)}
+          className="w-full h-32 bg-white border border-red-200 rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-red-400 mb-4 font-medium"
+        />
+
+        <button disabled={isSubmitting} onClick={handleSubmit} className="bg-red-600 text-white font-black py-4 px-8 rounded-2xl shadow-xl hover:bg-red-700 transition-all disabled:opacity-50 tracking-wide">
+          {isSubmitting ? 'SENDING...' : 'SEND EMERGENCY REQUEST'}
+        </button>
+      </div>
+
+      <div>
+        <h3 className="text-xl font-bold text-slate-800 mb-4">Past Emergency Requests</h3>
+        <div className="space-y-4">
+          {emergencies.map(e => (
+            <div key={e.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h4 className="font-black text-slate-900">{e.doctorName}</h4>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{new Date(e.created_at).toLocaleString()}</p>
+                </div>
+                <span className={`text-[10px] uppercase font-black px-3 py-1 rounded-md ${e.status === 'Replied' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {e.status}
+                </span>
+              </div>
+              <p className="text-slate-600 text-sm font-medium mb-4 italic">"{e.problemDescription}"</p>
+              {e.prescription && (
+                <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl">
+                  <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Doctor's Relief Prescription</p>
+                  <p className="text-emerald-900 font-medium text-sm">{e.prescription}</p>
+                </div>
+              )}
+            </div>
+          ))}
+          {emergencies.length === 0 && <p className="text-slate-400 font-medium italic">No emergency history found.</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EmergencyDoctorView = ({ email }: { email: string }) => {
+  const [emergencies, setEmergencies] = useState<any[]>([]);
+  const [replyText, setReplyText] = useState<{ [key: string]: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchEmergencies = () => {
+    fetch(`${API_BASE}/api/emergencies?role=doctor&email=${email}`)
+      .then(res => res.json())
+      .then(data => Array.isArray(data) && setEmergencies(data))
+      .catch(() => { });
+  };
+
+  useEffect(() => {
+    fetchEmergencies();
+  }, [email]);
+
+  const handleReply = async (id: string) => {
+    const rx = replyText[id];
+    if (!rx || !rx.trim()) return alert("Please type a prescription.");
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/emergencies/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prescription: rx })
+      });
+      if (res.ok) {
+        alert("Prescription sent.");
+        fetchEmergencies();
+      } else alert("Failed to reply.");
+    } catch (e) {
+      alert("Server error.");
+    }
+    setIsSubmitting(false);
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex items-center gap-4 mb-8">
+        <h2 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+          <span className="w-2 h-8 rounded-full bg-red-500 block"></span>
+          Emergency Queue
+        </h2>
+      </div>
+
+      <div className="space-y-6">
+        {emergencies.map(e => (
+          <div key={e.id} className="bg-white p-8 rounded-[40px] border border-red-50 shadow-sm relative">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h4 className="font-black text-2xl text-slate-900">{e.patientName}</h4>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{new Date(e.created_at).toLocaleString()}</p>
+              </div>
+              <span className={`text-[10px] uppercase font-black px-3 py-1 rounded-md ${e.status === 'Replied' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700 animate-pulse'}`}>
+                {e.status}
+              </span>
+            </div>
+
+            <div className="bg-red-50 p-4 rounded-2xl mb-6">
+              <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Issue Description</p>
+              <p className="text-slate-800 font-medium text-sm">{e.problemDescription}</p>
+            </div>
+
+            {e.status === 'Pending' ? (
+              <div className="flex flex-col gap-3">
+                <textarea
+                  placeholder="Prescribe quick temporary relief medicine..."
+                  value={replyText[e.id] || ''}
+                  onChange={evt => setReplyText({ ...replyText, [e.id]: evt.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-blue-400 text-sm font-medium"
+                />
+                <button disabled={isSubmitting} onClick={() => handleReply(e.id)} className="bg-blue-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-blue-700 self-end transition-all">Send Prescription</button>
+              </div>
+            ) : (
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Prescription Output</p>
+                <p className="text-slate-700 font-medium text-sm">{e.prescription}</p>
+              </div>
+            )}
+          </div>
+        ))}
+        {emergencies.length === 0 && (
+          <div className="text-center py-20 opacity-50">
+            <div className="w-16 h-16 bg-slate-100 rounded-full mx-auto flex items-center justify-center mb-4"><svg className="w-8 h-8 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" /></svg></div>
+            <p className="font-bold">No active emergency requests.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // --- APP COMPONENT ---
 
 const App = () => {
   const [role, setRole] = useState<'patient' | 'doctor'>('patient');
-  const [view, setView] = useState<'welcome' | 'login' | 'onboarding' | 'home' | 'dashboard' | 'prescriptions' | 'settings' | 'appointments' | 'vitals'>('welcome');
+  const [view, setView] = useState<'welcome' | 'login' | 'onboarding' | 'home' | 'dashboard' | 'prescriptions' | 'settings' | 'appointments' | 'vitals' | 'emergencies'>('welcome');
   const [userEmail, setUserEmail] = useState('');
   const [userPassword, setUserPassword] = useState('');
   const [patientDetails, setPatientDetails] = useState<PatientDetails | null>(null);
@@ -2032,6 +2305,8 @@ const App = () => {
         {view === 'vitals' && role === 'doctor' && <VitalsView appointments={appointments} doctorEmail={userEmail} />}
 
         {view === 'settings' && <SettingsView details={role === 'patient' ? patientDetails : doctorDetails} role={role} email={userEmail} onUpdate={handleUpdateDetails} />}
+        {view === 'emergencies' && role === 'patient' && <EmergencyPatientView email={userEmail} patientName={patientDetails?.fullName || 'Patient'} />}
+        {view === 'emergencies' && role === 'doctor' && <EmergencyDoctorView email={userEmail} />}
       </main>
 
       <BookingModal isOpen={showBooking} onClose={() => setShowBooking(false)} onBook={handleBooking} patientName={patientDetails?.fullName || ''} patientEmail={userEmail} />

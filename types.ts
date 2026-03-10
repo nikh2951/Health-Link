@@ -87,6 +87,7 @@ export interface BookedAppointment {
   patientEmail: string;
   patientName: string;
   paymentStatus: 'Paid' | 'Pending' | 'Refunded';
+  amountPaid?: string;
 }
 
 export interface AppNotification {

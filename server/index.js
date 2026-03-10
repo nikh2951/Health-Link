@@ -264,24 +264,28 @@ app.get('/api/doctors', (req, res) => {
 // --- Appointments ---
 
 app.post('/api/appointments', (req, res) => {
-    const { id, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status } = req.body;
+    const { id, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status, amountPaid } = req.body;
     if (!patientEmail || !doctorEmail || !date || !time) {
         return res.status(400).json({ error: 'Missing required appointment fields.' });
     }
 
     const stmt = db.prepare(`
-    INSERT INTO appointments (id, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO appointments (id, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status, amountPaid)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
     const bookingId = id || `APT-${Date.now()}`;
 
-    stmt.run([bookingId, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status || 'Scheduled'], function (err) {
+    stmt.run([bookingId, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status || 'Scheduled', amountPaid || '0'], function (err) {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error booking appointment' });
         }
-        res.status(201).json({ message: 'Appointment booked successfully', appointmentId: bookingId });
+
+        // Mark any unpaid emergencies for this doctor-patient pair as paid
+        db.run(`UPDATE emergencies SET isFeePaid = 1 WHERE patientEmail = ? AND doctorEmail = ? AND isFeePaid = 0`, [patientEmail, doctorEmail], function (err2) {
+            res.status(201).json({ message: 'Appointment booked successfully', appointmentId: bookingId });
+        });
     });
     stmt.finalize();
 });
@@ -339,6 +343,60 @@ app.get('/api/users/:email', (req, res) => {
         delete userData.pin;
 
         res.json(userData);
+    });
+});
+// --- Emergencies ---
+
+app.post('/api/emergencies', (req, res) => {
+    const { id, patientEmail, patientName, doctorEmail, doctorName, problemDescription } = req.body;
+    if (!patientEmail || !doctorEmail || !problemDescription) {
+        return res.status(400).json({ error: 'Missing required emergency fields.' });
+    }
+
+    const emergencyId = id || `EMG-${Date.now()}`;
+
+    db.run(`
+    INSERT INTO emergencies (id, patientEmail, patientName, doctorEmail, doctorName, problemDescription)
+    VALUES (?, ?, ?, ?, ?, ?)
+    `, [emergencyId, patientEmail, patientName, doctorEmail, doctorName, problemDescription], function (err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error creating emergency request' });
+        }
+        res.status(201).json({ message: 'Emergency request submitted', emergencyId });
+    });
+});
+
+app.get('/api/emergencies', (req, res) => {
+    const { role, email } = req.query;
+    if (!role || !email) {
+        return res.status(400).json({ error: 'Role and email query parameters required' });
+    }
+
+    const column = role === 'doctor' ? 'doctorEmail' : 'patientEmail';
+
+    db.all(`SELECT * FROM emergencies WHERE ${column} = ? ORDER BY created_at DESC`, [email], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Server error fetching emergencies' });
+        res.json(rows);
+    });
+});
+
+app.put('/api/emergencies/:id', (req, res) => {
+    const { id } = req.params;
+    const { prescription } = req.body;
+
+    db.run('UPDATE emergencies SET status = ?, prescription = ? WHERE id = ?', ['Replied', prescription, id], function (err) {
+        if (err) return res.status(500).json({ error: 'Error updating emergency request' });
+        if (this.changes === 0) return res.status(404).json({ error: 'Emergency request not found' });
+        res.json({ message: 'Emergency replied' });
+    });
+});
+
+app.get('/api/emergencies/unpaid/:doctorEmail/:patientEmail', (req, res) => {
+    const { doctorEmail, patientEmail } = req.params;
+    db.get(`SELECT COUNT(*) as count FROM emergencies WHERE doctorEmail = ? AND patientEmail = ? AND isFeePaid = 0`, [doctorEmail, patientEmail], (err, row) => {
+        if (err) return res.status(500).json({ error: 'Server error checking unpaid emergencies' });
+        res.json({ count: row.count || 0 });
     });
 });
 
