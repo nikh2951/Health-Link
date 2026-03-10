@@ -84,10 +84,15 @@ const db = new sqlite3.Database(dbPath, (err) => {
       prescription TEXT,
       status TEXT DEFAULT 'Pending',
       isFeePaid BOOLEAN DEFAULT 0,
+      area TEXT,
+      hospital TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(patientEmail) REFERENCES users(email),
       FOREIGN KEY(doctorEmail) REFERENCES users(email)
     )`);
+
+    db.run("ALTER TABLE emergencies ADD COLUMN area TEXT", () => { });
+    db.run("ALTER TABLE emergencies ADD COLUMN hospital TEXT", () => { });
   }
 });
 

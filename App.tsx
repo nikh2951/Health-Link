@@ -1853,7 +1853,9 @@ const EmergencyPatientView = ({ email, patientName }: { email: string, patientNa
           patientName: patientName,
           doctorEmail: selectedDoctor.email,
           doctorName: selectedDoctor.name,
-          problemDescription: problem
+          problemDescription: problem,
+          area: selectedArea,
+          hospital: selectedHospital
         })
       });
       if (res.ok) {
@@ -1886,20 +1888,20 @@ const EmergencyPatientView = ({ email, patientName }: { email: string, patientNa
         <p className="text-sm text-red-600 mb-6 font-medium">Select an expert to request immediate temporary relief while you wait for a direct consultation. A premium ₹200 fee applies to your next regular booking with this doctor.</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); setSelectedDoctor(null); }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-red-400">
+          <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); setSelectedDoctor(null); }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-red-400 font-bold">
             <option value="">Select Area</option>
-            {Array.from(new Set(doctorsList.map(a => a.area))).map(a => <option key={a} value={a}>{a}</option>)}
+            {MEDICAL_DATA.areas.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
           </select>
           <select disabled={!selectedArea} value={selectedHospital} onChange={e => { setSelectedHospital(e.target.value); setSelectedDoctor(null); }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none disabled:opacity-50">
             <option value="">Select Hospital</option>
-            {Array.from(new Set(doctorsList.filter(d => d.area === selectedArea).map(h => h.hospital))).map(h => <option key={h} value={h}>{h}</option>)}
+            {MEDICAL_DATA.areas.find(a => a.name === selectedArea)?.hospitals.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
           </select>
           <select disabled={!selectedHospital} value={selectedDoctor?.email || ''} onChange={e => {
             const doc = doctorsList.find(d => d.email === e.target.value);
             if (doc) setSelectedDoctor(doc);
-          }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none disabled:opacity-50">
+          }} className="w-full bg-white border border-red-200 rounded-2xl py-3 px-4 outline-none disabled:opacity-50 font-bold">
             <option value="">Select Doctor</option>
-            {doctorsList.filter(d => d.hospital === selectedHospital).map(d => <option key={d.email} value={d.email}>{d.name} ({d.spec})</option>)}
+            {doctorsList.filter(d => d.hospitalName === selectedHospital && d.area === selectedArea).map(d => <option key={d.email} value={d.email}>{d.name} ({d.specialization})</option>)}
           </select>
         </div>
 
@@ -1923,7 +1925,8 @@ const EmergencyPatientView = ({ email, patientName }: { email: string, patientNa
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h4 className="font-black text-slate-900">{e.doctorName}</h4>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{new Date(e.created_at).toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{e.hospital} • {e.area}</p>
+                  <p className="text-[9px] text-slate-300 font-bold uppercase tracking-wider">{new Date(e.created_at).toLocaleString()}</p>
                 </div>
                 <span className={`text-[10px] uppercase font-black px-3 py-1 rounded-md ${e.status === 'Replied' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                   {e.status}
@@ -1941,7 +1944,7 @@ const EmergencyPatientView = ({ email, patientName }: { email: string, patientNa
           {emergencies.length === 0 && <p className="text-slate-400 font-medium italic">No emergency history found.</p>}
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 

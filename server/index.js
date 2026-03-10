@@ -356,7 +356,7 @@ app.get('/api/users/:email', (req, res) => {
 // --- Emergencies ---
 
 app.post('/api/emergencies', (req, res) => {
-    const { id, patientEmail, patientName, doctorEmail, doctorName, problemDescription } = req.body;
+    const { id, patientEmail, patientName, doctorEmail, doctorName, problemDescription, area, hospital } = req.body;
     if (!patientEmail || !doctorEmail || !problemDescription) {
         return res.status(400).json({ error: 'Missing required emergency fields.' });
     }
@@ -364,9 +364,9 @@ app.post('/api/emergencies', (req, res) => {
     const emergencyId = id || `EMG-${Date.now()}`;
 
     db.run(`
-    INSERT INTO emergencies (id, patientEmail, patientName, doctorEmail, doctorName, problemDescription)
-    VALUES (?, ?, ?, ?, ?, ?)
-    `, [emergencyId, patientEmail, patientName, doctorEmail, doctorName, problemDescription], function (err) {
+    INSERT INTO emergencies (id, patientEmail, patientName, doctorEmail, doctorName, problemDescription, area, hospital)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [emergencyId, patientEmail, patientName, doctorEmail, doctorName, problemDescription, area || null, hospital || null], function (err) {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error creating emergency request' });
