@@ -33,6 +33,9 @@ const db = new sqlite3.Database(dbPath, (err) => {
       hasBloodPressure BOOLEAN DEFAULT 0,
       hasBloodSugar BOOLEAN DEFAULT 0,
       hasThyroid BOOLEAN DEFAULT 0,
+      age TEXT,
+      lastBloodTest TEXT,
+      previousDoctor TEXT,
       experienceYears TEXT,
       consultationFee TEXT,
       licenseNumber TEXT,
@@ -42,6 +45,19 @@ const db = new sqlite3.Database(dbPath, (err) => {
       availabilityJSON TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    // Add missing columns if they don't exist
+    const addColumns = [
+      "ALTER TABLE users ADD COLUMN age TEXT",
+      "ALTER TABLE users ADD COLUMN lastBloodTest TEXT",
+      "ALTER TABLE users ADD COLUMN previousDoctor TEXT"
+    ];
+
+    addColumns.forEach(sql => {
+      db.run(sql, (err) => {
+        // ignore error if column already exists
+      });
+    });
 
     // Create Appointments Table
     db.run(`CREATE TABLE IF NOT EXISTS appointments (

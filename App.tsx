@@ -1555,24 +1555,7 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
-  const [showPayment, setShowPayment] = useState(false);
-  const [showQRScan, setShowQRScan] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [extraFee, setExtraFee] = useState(0);
-  const [manualAmount, setManualAmount] = useState('');
-
-  useEffect(() => {
-    if (selectedDoctor && selectedDoctor.email) {
-      fetch(`${API_BASE}/api/emergencies/unpaid/${selectedDoctor.email}/${patientEmail}`)
-        .then(res => res.json())
-        .then(data => {
-          setExtraFee(data.count > 0 ? 200 : 0);
-        })
-        .catch(() => setExtraFee(0));
-    } else {
-      setExtraFee(0);
-    }
-  }, [selectedDoctor, patientEmail]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1633,181 +1616,109 @@ const BookingModal = ({ isOpen, onClose, onBook, patientName, patientEmail }: { 
       <div className="bg-white w-full max-w-xl rounded-[40px] p-10 shadow-2xl relative animate-in zoom-in duration-300">
         <button onClick={onClose} className="absolute top-8 right-8 text-slate-400 hover:text-slate-900 transition-colors">✕</button>
 
-        {showPayment ? (
-          <div>
-            <button onClick={() => setShowPayment(false)} className="text-slate-400 hover:text-slate-900 font-bold text-sm mb-6 flex items-center gap-2">← Back to Details</button>
-            <h2 className="text-3xl font-black text-slate-900 mb-2">Complete Payment</h2>
-            <p className="text-slate-500 font-medium mb-8">Securely pay the consultation fee to confirm.</p>
+        <h2 className="text-3xl font-black text-slate-900 mb-8">Book Appointment</h2>
+        <div className="space-y-6">
+          <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]">
+            <option value="">Select Area</option>
+            {MEDICAL_DATA.areas.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+          </select>
+          <select disabled={!selectedArea} value={selectedHospital} onChange={e => setSelectedHospital(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
+            <option value="">Select Hospital</option>
+            {MEDICAL_DATA.areas.find(a => a.name === selectedArea)?.hospitals.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
+          </select>
+          <select disabled={!selectedHospital} value={selectedSpecialization} onChange={e => { setSelectedSpecialization(e.target.value); setSelectedDoctor(null); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
+            <option value="">Select Specialization</option>
+            {specializations.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select disabled={!selectedSpecialization} value={selectedDoctor?.name || ''} onChange={e => {
+            const doc = doctorsList.find(d => d.name === e.target.value);
+            if (doc) setSelectedDoctor(doc);
+          }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
+            <option value="">Select Doctor</option>
+            {doctorsList.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+          </select>
 
-            <div className="bg-slate-50 rounded-3xl p-6 mb-8 border border-slate-100">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Consultation with</span>
-                <span className="font-black text-slate-900">{selectedDoctor?.name}</span>
+          {selectedDoctor && (
+            <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected Expert</p>
+                <p className="text-sm font-black text-[#004D40]">{selectedDoctor.name}</p>
+                <p className="text-[9px] font-bold text-slate-500 uppercase">{selectedDoctor.specialization}</p>
               </div>
-              <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
-                <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Date & Time</span>
-                <span className="font-black text-slate-900 text-right">{selectedDate}<br />{selectedTime}</span>
-              </div>
-              {extraFee > 0 && (
-                <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200 bg-red-50/50 -mx-6 px-6 py-2">
-                  <span className="text-red-500 font-bold uppercase tracking-widest text-xs flex items-center gap-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg> Emergency Service Fee</span>
-                  <span className="font-black text-red-600">₹{extraFee}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center">
-                <span className="text-slate-900 font-black uppercase tracking-widest text-sm">Amount to Pay</span>
-                <span className="text-3xl font-black text-emerald-600">₹{Number(selectedDoctor?.fee || 0) + extraFee}</span>
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Consultation Fee</p>
+                <p className="text-lg font-black text-emerald-600">₹{Number(selectedDoctor.fee || 0)}</p>
               </div>
             </div>
+          )}
 
-            <div className="space-y-4 mb-8">
-              {!showQRScan ? (
-                <button
-                  onClick={() => setShowQRScan(true)}
-                  className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-[1.02] transition-all flex justify-center items-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-                  Pay the Fee
-                </button>
-              ) : (
-                <div className="animate-in zoom-in duration-300">
-                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center mb-6">
-                    <QRCode value={`healthlink-pay-${selectedDoctor?.email}-${Number(selectedDoctor?.fee || 0) + extraFee}`} size={160} />
-                    <p className="text-[10px] font-black text-slate-400 mt-4 uppercase tracking-widest">Scan to initiate payment</p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase ml-1 block mb-2">Enter the Amount to Pay</label>
-                      <input
-                        type="number"
-                        placeholder="Enter amount (min ₹100)"
-                        value={manualAmount}
-                        onChange={e => setManualAmount(e.target.value)}
-                        className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40] font-bold text-lg"
-                      />
-                    </div>
-
-                    <button
-                      disabled={isProcessing}
-                      onClick={() => {
-                        const amt = Number(manualAmount);
-                        if (amt < 100) return alert('Amount must be above ₹100');
-
-                        setIsProcessing(true);
-                        setTimeout(() => {
-                          onBook({
-                            id: Math.random().toString(),
-                            bookingId: 'HL-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-                            date: selectedDate,
-                            time: selectedTime,
-                            area: selectedArea,
-                            hospital: selectedHospital,
-                            doctor: selectedDoctor!.name,
-                            doctorEmail: selectedDoctor!.email,
-                            patientEmail,
-                            patientName,
-                            paymentStatus: 'Paid',
-                            amountPaid: manualAmount
-                          });
-                          setIsProcessing(false);
-                          alert('Payment Successful! Your appointment is confirmed.');
-                          onClose();
-                        }, 1500);
-                      }}
-                      className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-xl hover:scale-[1.02] transition-all flex justify-center items-center gap-2"
-                    >
-                      {isProcessing ? 'Processing Payment...' : 'Complete Payment'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+          <div className="grid grid-cols-2 gap-4">
+            <input
+              type="date"
+              min={new Date().toISOString().split('T')[0]}
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+              className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]"
+            />
+            <select disabled={!selectedDate || !selectedDoctor} value={selectedTime} onChange={e => setSelectedTime(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50">
+              <option value="">Select Time Slot</option>
+              {availableSlotsForDoctorAndDate.map(t => {
+                const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === t).length;
+                const isFull = bookedCount >= MAX_APPOINTMENTS_PER_SLOT;
+                return (
+                  <option key={t} value={t} disabled={isFull}>
+                    {t} {isFull ? '(FULL)' : `(${MAX_APPOINTMENTS_PER_SLOT - bookedCount} left)`}
+                  </option>
+                );
+              })}
+              {selectedDate && selectedDoctor && availableSlotsForDoctorAndDate.length === 0 && <option disabled>No slots for this date</option>}
+            </select>
           </div>
-        ) : (
-          <>
-            <h2 className="text-3xl font-black text-slate-900 mb-8">Book Appointment</h2>
-            <div className="space-y-6">
-              <select value={selectedArea} onChange={e => { setSelectedArea(e.target.value); setSelectedHospital(''); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]">
-                <option value="">Select Area</option>
-                {MEDICAL_DATA.areas.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-              </select>
-              <select disabled={!selectedArea} value={selectedHospital} onChange={e => setSelectedHospital(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
-                <option value="">Select Hospital</option>
-                {MEDICAL_DATA.areas.find(a => a.name === selectedArea)?.hospitals.map(h => <option key={h.name} value={h.name}>{h.name}</option>)}
-              </select>
-              <select disabled={!selectedHospital} value={selectedSpecialization} onChange={e => { setSelectedSpecialization(e.target.value); setSelectedDoctor(null); }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
-                <option value="">Select Specialization</option>
-                {specializations.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select disabled={!selectedSpecialization} value={selectedDoctor?.name || ''} onChange={e => {
-                const doc = doctorsList.find(d => d.name === e.target.value);
-                if (doc) setSelectedDoctor(doc);
-              }} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50 focus:ring-2 focus:ring-[#004D40]">
-                <option value="">Select Doctor</option>
-                {doctorsList.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
-              </select>
+          <button
+            disabled={isProcessing}
+            onClick={() => {
+              if (!selectedDoctor || !selectedDate || !selectedTime) return alert('Please fill all fields');
 
-              {selectedDoctor && (
-                <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selected Expert</p>
-                    <p className="text-sm font-black text-[#004D40]">{selectedDoctor.name}</p>
-                    <p className="text-[9px] font-bold text-slate-500 uppercase">{selectedDoctor.specialization}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Fee To Pay</p>
-                    <p className="text-lg font-black text-emerald-600">₹{Number(selectedDoctor.fee || 0) + extraFee}</p>
-                    {extraFee > 0 && <p className="text-[9px] font-bold text-red-500 uppercase tracking-widest animate-pulse mt-1">+₹{extraFee} Emergency</p>}
-                  </div>
-                </div>
-              )}
+              const now = new Date();
+              const today = [
+                now.getFullYear(),
+                String(now.getMonth() + 1).padStart(2, '0'),
+                String(now.getDate()).padStart(2, '0')
+              ].join('-');
 
-              <div className="grid grid-cols-2 gap-4">
-                <input
-                  type="date"
-                  min={new Date().toISOString().split('T')[0]}
-                  value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-[#004D40]"
-                />
-                <select disabled={!selectedDate || !selectedDoctor} value={selectedTime} onChange={e => setSelectedTime(e.target.value)} className="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 outline-none disabled:opacity-50">
-                  <option value="">Select Time Slot</option>
-                  {availableSlotsForDoctorAndDate.map(t => {
-                    const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === t).length;
-                    const isFull = bookedCount >= MAX_APPOINTMENTS_PER_SLOT;
-                    return (
-                      <option key={t} value={t} disabled={isFull}>
-                        {t} {isFull ? '(FULL)' : `(${MAX_APPOINTMENTS_PER_SLOT - bookedCount} left)`}
-                      </option>
-                    );
-                  })}
-                  {selectedDate && selectedDoctor && availableSlotsForDoctorAndDate.length === 0 && <option disabled>No slots for this date</option>}
-                </select>
-              </div>
-              <button onClick={() => {
-                if (!selectedDoctor || !selectedDate || !selectedTime) return alert('Fill all fields');
+              if (selectedDate < today) return alert('You cannot book an appointment for a past date.');
+              if (selectedDate === today && isTimePassed(selectedTime, selectedDate)) {
+                return alert('This time slot has already passed. Please select a future time.');
+              }
 
-                const now = new Date();
-                const today = [
-                  now.getFullYear(),
-                  String(now.getMonth() + 1).padStart(2, '0'),
-                  String(now.getDate()).padStart(2, '0')
-                ].join('-');
+              const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === selectedTime).length;
+              if (bookedCount >= MAX_APPOINTMENTS_PER_SLOT) return alert('This slot is now full. Please select another time.');
 
-                if (selectedDate < today) return alert('You cannot book an appointment for a past date.');
-                if (selectedDate === today && isTimePassed(selectedTime, selectedDate)) {
-                  return alert('This time slot has already passed. Please select a future time.');
-                }
+              setIsProcessing(true);
+              const appointmentId = 'APT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4).toUpperCase();
 
-                const bookedCount = appointments.filter(a => a.doctorEmail === selectedDoctor?.email && a.date === selectedDate && a.time === selectedTime).length;
-                if (bookedCount >= MAX_APPOINTMENTS_PER_SLOT) return alert('This slot is now full. Please select another time.');
+              onBook({
+                id: appointmentId,
+                bookingId: appointmentId,
+                date: selectedDate,
+                time: selectedTime,
+                area: selectedArea,
+                hospital: selectedHospital,
+                doctor: selectedDoctor!.name,
+                doctorEmail: selectedDoctor!.email,
+                patientEmail,
+                patientName,
+                paymentStatus: 'Pending',
+                amountPaid: (Number(selectedDoctor!.fee || 0)).toString()
+              });
 
-                setShowPayment(true);
-              }} className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-[0_8px_30px_rgb(0,77,64,0.3)] hover:scale-105 transition-all text-lg tracking-wide uppercase">Proceed to Payment</button>
-            </div>
-          </>
-        )}
+              setIsProcessing(false);
+              alert('Appointment booked successfully!');
+              onClose();
+            }} className="w-full bg-[#004D40] text-white font-bold py-4 rounded-2xl shadow-[0_8px_30px_rgb(0,77,64,0.3)] hover:scale-105 transition-all text-lg tracking-wide uppercase disabled:opacity-50">
+            {isProcessing ? 'Booking...' : 'Book Appointment'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2109,12 +2020,30 @@ const App = () => {
   }, [view, showBooking]);
 
   const fetchAppointments = async (email: string, userRole: string) => {
+    if (!email) return;
     try {
       const res = await fetch(`${API_BASE}/api/appointments?role=${userRole}&email=${email}`);
       const data = await res.json();
-      if (Array.isArray(data)) setAppointments(data);
+      if (Array.isArray(data)) {
+        // Ensure 'doctor' property is present for all
+        const normalized = data.map((a: any) => ({
+          ...a,
+          doctor: a.doctor || a.doctorName
+        }));
+        setAppointments(normalized);
+      }
     } catch (e) { }
   };
+
+  // Appointment Polling
+  useEffect(() => {
+    if ((patientDetails || doctorDetails) && userEmail && (view !== 'welcome' && view !== 'login')) {
+      const interval = setInterval(() => {
+        fetchAppointments(userEmail, role);
+      }, 15000); // Polling every 15s
+      return () => clearInterval(interval);
+    }
+  }, [userEmail, role, view, patientDetails, doctorDetails]);
 
   const handleLoginSuccess = async (email: string, password?: string, userData?: any) => {
     const normalizedEmail = email.toLowerCase().trim();

@@ -127,7 +127,8 @@ app.post('/api/auth/register', async (req, res) => {
     let {
         email, pin, role, fullName, phoneNumber, dateOfBirth, gender, bloodGroup, height, weight,
         profilePicture, recentSurgeries, previousFractures, latestMedicines,
-        hasBloodPressure, hasBloodSugar, hasThyroid, experienceYears, consultationFee,
+        hasBloodPressure, hasBloodSugar, hasThyroid, age, lastBloodTest, previousDoctor,
+        experienceYears, consultationFee,
         licenseNumber, hospitalName, specialization, area, availability
     } = req.body;
 
@@ -149,9 +150,10 @@ app.post('/api/auth/register', async (req, res) => {
       INSERT INTO users (
         email, pin, role, fullName, phoneNumber, dateOfBirth, gender, bloodGroup, height, weight, 
         profilePicture, recentSurgeries, previousFractures, latestMedicines,
-        hasBloodPressure, hasBloodSugar, hasThyroid, experienceYears, consultationFee, 
+        hasBloodPressure, hasBloodSugar, hasThyroid, age, lastBloodTest, previousDoctor,
+        experienceYears, consultationFee, 
         licenseNumber, hospitalName, specialization, area, availabilityJSON
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
         stmt.run([
@@ -159,6 +161,7 @@ app.post('/api/auth/register', async (req, res) => {
             profilePicture || null, recentSurgeries || null, previousFractures || null,
             JSON.stringify(latestMedicines || []),
             hasBloodPressure ? 1 : 0, hasBloodSugar ? 1 : 0, hasThyroid ? 1 : 0,
+            age || null, lastBloodTest || null, previousDoctor || null,
             experienceYears || null, consultationFee || null, licenseNumber || null, hospitalName || null,
             specialization || null, area || null, JSON.stringify(availability || {})
         ], function (err) {
@@ -230,15 +233,24 @@ app.put('/api/users/:email', (req, res) => {
     }
 
     // Create dynamic update query based on fields provided
-    const keys = Object.keys(data).filter(k => k !== 'email' && k !== 'pin');
+    // Filter out availabilityJSON if availability is present to avoid double updates
+    let keys = Object.keys(data).filter(k => k !== 'email' && k !== 'pin' && k !== 'id' && k !== 'created_at');
+    if (keys.includes('availability') && keys.includes('availabilityJSON')) {
+        keys = keys.filter(k => k !== 'availabilityJSON');
+    }
+
     if (keys.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
     const setClause = keys.map(k => {
         if (k === 'availability') return 'availabilityJSON = ?';
+        if (k === 'availabilityJSON') return 'availabilityJSON = ?';
         return `${k} = ?`;
     }).join(', ');
+
     const values = keys.map(k => {
-        if (k === 'latestMedicines' || k === 'availability') return JSON.stringify(data[k]);
+        if (k === 'latestMedicines' || k === 'availability' || k === 'availabilityJSON' || k === 'availability') {
+            return typeof data[k] === 'object' ? JSON.stringify(data[k]) : data[k];
+        }
         if (typeof data[k] === 'boolean') return data[k] ? 1 : 0;
         return data[k];
     });
@@ -272,9 +284,14 @@ app.get('/api/doctors', (req, res) => {
 // --- Appointments ---
 
 app.post('/api/appointments', (req, res) => {
-    const { id, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status, amountPaid } = req.body;
-    if (!patientEmail || !doctorEmail || !date || !time) {
-        return res.status(400).json({ error: 'Missing required appointment fields.' });
+    const { id, patientEmail, patientName, doctorEmail, doctorName, doctor, hospital, date, time, status, paymentStatus, amountPaid } = req.body;
+    
+    // Support both naming conventions
+    const resolvedDoctorName = doctorName || doctor;
+    const resolvedStatus = status || paymentStatus || 'Scheduled';
+
+    if (!patientEmail || !doctorEmail || !date || !time || !resolvedDoctorName) {
+        return res.status(400).json({ error: 'Missing required appointment fields (emails, date, time, or doctor name).' });
     }
 
     const stmt = db.prepare(`
@@ -284,7 +301,7 @@ app.post('/api/appointments', (req, res) => {
 
     const bookingId = id || `APT-${Date.now()}`;
 
-    stmt.run([bookingId, patientEmail, patientName, doctorEmail, doctorName, hospital, date, time, status || 'Scheduled', amountPaid || '0'], function (err) {
+    stmt.run([bookingId, patientEmail, patientName, doctorEmail, resolvedDoctorName, hospital, date, time, resolvedStatus, amountPaid || '0'], function (err) {
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error booking appointment' });
@@ -308,7 +325,12 @@ app.get('/api/appointments', (req, res) => {
 
     db.all(`SELECT * FROM appointments WHERE ${column} = ?`, [email], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Server error fetching appointments' });
-        res.json(rows);
+        // Map doctorName to doctor for frontend compatibility
+        const formatted = rows.map(r => ({
+            ...r,
+            doctor: r.doctorName
+        }));
+        res.json(formatted);
     });
 });
 
@@ -347,6 +369,10 @@ app.get('/api/users/:email', (req, res) => {
         userData.hasThyroid = !!userData.hasThyroid;
         try {
             if (userData.latestMedicines) userData.latestMedicines = JSON.parse(userData.latestMedicines);
+            if (userData.availabilityJSON) {
+                userData.availability = JSON.parse(userData.availabilityJSON);
+                delete userData.availabilityJSON;
+            }
         } catch (e) { }
         delete userData.pin;
 
